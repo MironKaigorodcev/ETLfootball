@@ -48,39 +48,105 @@ def query_team_matches(team_name="Arsenal"):
     for match in matches:
         date = match.date.strftime("%Y-%m-%d") if match.date else "N/A"
         score = f"{match.home_score}-{match.away_score}" if match.home_score is not None else "vs"
-        venue = "🏠 Дома" if match.home_team_id == team.id else "✈️  В гостях"
+        # Используем поле venue напрямую
+        venue = "🏠 Дома" if match.venue == 'Home' else "✈️  В гостях"
         print(f"{date} | {score:5s} | {venue} | {match.competition}")
     
     print(f"\nВсего матчей: {len(matches)}")
     return matches
 
 def query_squad_stats():
-    """Получить статистику всех команд"""
-    session = connect_db()
+    """Получить агрегированную статистику команд из данных игроков"""
+    conn = sqlite3.connect('football_data.db')
     
-    stats = session.query(
-        Team.name,
-        SquadStat.goals_for,
-        SquadStat.goals_against,
-        SquadStat.possession,
-        SquadStat.season
-    ).join(Team).order_by(desc(SquadStat.goals_for)).all()
+    # SQL запрос для агрегированной статистики команд
+    query = """
+    SELECT 
+        t.name as team,
+        COUNT(DISTINCT p.id) as players,
+        SUM(ps.goals) as total_goals,
+        SUM(ps.assists) as total_assists,
+        SUM(ps.minutes) as total_minutes,
+        ROUND(AVG(ps.goals), 2) as avg_goals_per_player,
+        MAX(ps.goals) as top_scorer_goals
+    FROM player_stats ps
+    JOIN players p ON ps.player_id = p.id
+    JOIN teams t ON p.team_id = t.id
+    GROUP BY t.id
+    ORDER BY total_goals DESC
+    """
     
-    print("\n" + "=" * 60)
-    print("📊 СТАТИСТИКА КОМАНД")
-    print("=" * 60)
-    print(f"{'Команда':<20} | {'Голы':<10} | {'Пропущено':<12} | {'Владение':<10} | {'Сезон'}")
-    print("-" * 60)
+    df = pd.read_sql_query(query, conn)
+    conn.close()
     
-    for stat in stats:
-        name, gf, ga, poss, season = stat
-        gf_str = str(gf) if gf else "N/A"
-        ga_str = str(ga) if ga else "N/A"
-        poss_str = f"{poss:.1f}%" if poss else "N/A"
-        print(f"{name:<20} | {gf_str:<10} | {ga_str:<12} | {poss_str:<10} | {season}")
+    print("\n" + "=" * 70)
+    print("📊 АГРЕГИРОВАННАЯ СТАТИСТИКА КОМАНД (из данных игроков)")
+    print("=" * 70)
     
-    print(f"\nВсего записей: {len(stats)}")
-    return stats
+    if not df.empty:
+        print(f"{'Команда':<20} | {'Игроков':<8} | {'Голы':<6} | {'Ассисты':<8} | {'Минуты':<10} | {'Топ'}")
+        print("-" * 70)
+        
+        for _, row in df.iterrows():
+            print(f"{row['team']:<20} | {row['players']:<8} | {row['total_goals']:<6} | {row['total_assists']:<8} | {row['total_minutes']:<10} | {row['top_scorer_goals']}")
+        
+        print(f"\nВсего команд: {len(df)}")
+    else:
+        print("⚠️  Нет данных о статистике игроков")
+    
+    return df
+
+def query_squad_stats_from_matches():
+    """Получить статистику команд из результатов матчей"""
+    conn = sqlite3.connect('football_data.db')
+    
+    # SQL запрос для статистики из матчей
+    # ВАЖНО: В нашей модели данных home_score = ВСЕГДА голы команды (GF),
+    # away_score = ВСЕГДА голы соперника (GA), независимо от venue
+    query = """
+    SELECT 
+        t.name as team,
+        COUNT(m.id) as matches,
+        SUM(m.home_score) as goals_scored,
+        SUM(m.away_score) as goals_conceded,
+        SUM(CASE 
+            WHEN m.home_score > m.away_score THEN 3
+            WHEN m.home_score = m.away_score THEN 1
+            ELSE 0 
+        END) as points,
+        SUM(CASE WHEN m.home_score > m.away_score THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN m.home_score = m.away_score THEN 1 ELSE 0 END) as draws,
+        SUM(CASE WHEN m.home_score < m.away_score THEN 1 ELSE 0 END) as losses
+    FROM matches m
+    JOIN teams t ON m.home_team_id = t.id
+    WHERE m.home_score IS NOT NULL
+    GROUP BY t.id
+    ORDER BY points DESC, (SUM(m.home_score) - SUM(m.away_score)) DESC, SUM(m.home_score) DESC
+    """
+    
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    
+    print("\n" + "=" * 90)
+    print("🏆 ТУРНИРНАЯ ТАБЛИЦА (из результатов матчей)")
+    print("=" * 90)
+    
+    if not df.empty:
+        # Добавляем разницу мячей
+        df['gd'] = df['goals_scored'] - df['goals_conceded']
+        
+        print(f"{'#':<3} {'Команда':<20} | {'М':<3} | {'В':<3} | {'Н':<3} | {'П':<3} | {'ГЗ':<4} | {'ГП':<4} | {'РМ':<4} | {'Очки'}")
+        print("-" * 90)
+        
+        for idx, row in df.iterrows():
+            print(f"{idx+1:<3} {row['team']:<20} | {row['matches']:<3} | {row['wins']:<3} | {row['draws']:<3} | {row['losses']:<3} | {row['goals_scored']:<4} | {row['goals_conceded']:<4} | {row['gd']:<4} | {row['points']}")
+        
+        print(f"\nВсего команд: {len(df)}")
+        print("\nЛегенда: М=Матчи, В=Победы, Н=Ничьи, П=Поражения, ГЗ=Голы забиты, ГП=Голы пропущены, РМ=Разница мячей")
+    else:
+        print("⚠️  Нет данных о матчах")
+    
+    return df
 
 def query_top_scorers(limit=10):
     """Топ бомбардиров"""
@@ -184,13 +250,16 @@ def main():
         # 3. Матчи конкретной команды (можно изменить название)
         query_team_matches("Arsenal")  # Измените на любую команду
         
-        # 4. Статистика команд
+        # 4. Турнирная таблица (из матчей)
+        query_squad_stats_from_matches()
+        
+        # 5. Агрегированная статистика команд (из данных игроков)
         query_squad_stats()
         
-        # 5. Топ бомбардиров
+        # 6. Топ бомбардиров
         query_top_scorers(10)
         
-        # 6. Анализ с pandas
+        # 7. Анализ с pandas
         query_with_pandas()
         
     except Exception as e:

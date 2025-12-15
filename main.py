@@ -87,19 +87,18 @@ def process_matches(session: Session, team: Team, df: pd.DataFrame):
             # or if we want full logs, we treat them as "Team Match Performance".
             # The DB model 'Match' looks like a single event.
             
-            if row.get('Venue') == 'Home':
-                match = Match(
-                    date=pd.to_datetime(row['Date']),
-                    home_team_id=team.id,
-                    # away_team_id = ... need to lookup opponent by name
-                    home_score=gf,
-                    away_score=ga,
-                    competition=row.get('Comp'),
-                    round=row.get('Round'),
-                    venue=row.get('Venue'),
-                    attendance=attendance
+            match = Match(
+                date=pd.to_datetime(row['Date']),
+                home_team_id=team.id,
+                # away_team_id = ... need to lookup opponent by name
+                home_score=gf,
+                away_score=ga,
+                competition=row.get('Comp'),
+                round=row.get('Round'),
+                venue=row.get('Venue'),
+                attendance=attendance
                 )
-                session.add(match)
+            session.add(match)
 
     session.commit()
 
@@ -284,20 +283,23 @@ def process_player_stats(session: Session, team: Team, player_tables: dict):
                 
                 for col in standard_table.columns:
                     col_str = str(col)
-                    # Ищем голы (Gls, но не xG, npxG и т.д.)
-                    if col_str.endswith('Gls') and 'x' not in col_str.lower() and 'np' not in col_str.lower():
+                    
+                    # Ищем ТОЛЬКО Performance_Gls (не Per 90 Minutes)
+                    if 'Performance' in col_str and col_str.endswith('Gls'):
                         try:
                             goals = int(float(row[col])) if not pd.isna(row[col]) else 0
                         except:
                             pass
-                    # Ищем ассисты
-                    elif col_str.endswith('Ast') and 'x' not in col_str.lower():
+                    
+                    # Ищем ТОЛЬКО Performance_Ast
+                    elif 'Performance' in col_str and col_str.endswith('Ast'):
                         try:
                             assists = int(float(row[col])) if not pd.isna(row[col]) else 0
                         except:
                             pass
-                    # Ищем минуты
-                    elif 'Min' in col_str and 'per' not in col_str.lower():
+                    
+                    # Ищем Playing Time_Min
+                    elif 'Playing Time' in col_str and 'Min' in col_str:
                         try:
                             min_val = str(row[col]).replace(',', '')
                             minutes = int(float(min_val)) if min_val.replace('.','').isdigit() else 0

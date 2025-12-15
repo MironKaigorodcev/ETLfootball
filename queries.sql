@@ -2,6 +2,49 @@
 -- Можно выполнять через sqlite3 или любой SQL клиент
 
 -- ============================================
+-- 🏆 ТУРНИРНАЯ ТАБЛИЦА (ГЛАВНЫЙ ЗАПРОС)
+-- ============================================
+
+-- Полная турнирная таблица с очками, победами, ничьими, поражениями
+-- ВАЖНО: home_score = ВСЕГДА голы команды (GF), away_score = ВСЕГДА голы соперника (GA)
+SELECT 
+    t.name as "Команда",
+    COUNT(m.id) as "М",
+    SUM(CASE WHEN m.home_score > m.away_score THEN 1 ELSE 0 END) as "В",
+    SUM(CASE WHEN m.home_score = m.away_score THEN 1 ELSE 0 END) as "Н",
+    SUM(CASE WHEN m.home_score < m.away_score THEN 1 ELSE 0 END) as "П",
+    SUM(m.home_score) as "ГЗ",
+    SUM(m.away_score) as "ГП",
+    SUM(m.home_score) - SUM(m.away_score) as "РМ",
+    SUM(CASE 
+        WHEN m.home_score > m.away_score THEN 3
+        WHEN m.home_score = m.away_score THEN 1
+        ELSE 0 
+    END) as "Очки"
+FROM matches m
+JOIN teams t ON m.home_team_id = t.id
+WHERE m.home_score IS NOT NULL
+GROUP BY t.id
+ORDER BY "Очки" DESC, "РМ" DESC, "ГЗ" DESC;
+
+-- ============================================
+-- 📊 АГРЕГИРОВАННАЯ СТАТИСТИКА КОМАНД (из игроков)
+-- ============================================
+
+SELECT 
+    t.name as "Команда",
+    COUNT(DISTINCT p.id) as "Игроков",
+    SUM(ps.goals) as "Всего голов",
+    SUM(ps.assists) as "Всего ассистов",
+    SUM(ps.minutes) as "Всего минут",
+    MAX(ps.goals) as "Топ голов"
+FROM player_stats ps
+JOIN players p ON ps.player_id = p.id
+JOIN teams t ON p.team_id = t.id
+GROUP BY t.id
+ORDER BY "Всего голов" DESC;
+
+-- ============================================
 -- 1. БАЗОВЫЕ ЗАПРОСЫ
 -- ============================================
 

@@ -15,15 +15,17 @@ RETRY_BASE_DELAY = 10  # Базовая задержка для экспонен
 
 # Настройки базы данных
 DB_PATH = 'sqlite:///football_data.db'
-SEASON = '2024-2025'  # Текущий сезон
+SEASON = '2023-2024'
 COMPETITION = 'Premier League'
 
 # URL конфигурация
-PREMIER_LEAGUE_URL = '/en/comps/9/Premier-League-Stats'
+# В config.py измените URL на конкретный сезон:
+PREMIER_LEAGUE_URL = '/en/comps/9/2023-2024/2023-2024-Premier-League-Stats'
+
 
 # Режим отладки
-DEBUG_MODE = True  # Если True, парсит только первую команду (для быстрого теста)
-DEBUG_TEAM_LIMIT = 2  # Количество команд для отладки
+DEBUG_MODE = False  # Если True, парсит только первую команду (для быстрого теста)
+DEBUG_TEAM_LIMIT = 20  # Количество команд для отладки
 
 # ВАЖНО: После успешного теста установите DEBUG_MODE = False для полного парсинга!
 
